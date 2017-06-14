@@ -1,0 +1,84 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+# README
+#
+# Getting Started:
+# A. Install Vagrant
+# B. Create a folder on your Desktop for Vagrant files
+# C. run > vagrant init learnansible  - to intialize the folder for Vagrant
+# D. Copy this file and overwrite\paste it into the Vagrant file created by the vagrant init 
+# 1. vagrant plugin install vagrant-hostmanager
+# 2. vagrant up - this will launch your environment you will only be interacting with the control gui minimize the gui's for the other vm's
+# 3. log into the control vm using username: vagrant  password: vagrant
+# 4. install the gnome desktop sudo apt-get install ubuntu-gnome-desktop
+# 5. shutdown the vm and make sure to give the vm sufficient memory (2gb) and proc (2proc)
+# 6. login and tupe: sudo gdm start
+# 7. Install the Atom Text Editor (you will have to cut and paste from it later in the lab) http://tipsonubuntu.com/2016/08/05/install-atom-text-editor-ubuntu-16-04/
+# 8. congrats you are all setup to rock!
+
+Vagrant.configure(2) do |config|
+  config.hostmanager.enabled = true
+
+  config.vm.box = "ubuntu/trusty64"
+
+  config.vm.provider "virtualbox" do |v|
+  v.gui = true
+  end
+
+  config.vm.define "control", primary: true do |h|
+ 
+# Provsion the private network for the VM
+    h.vm.network "private_network", ip: "192.168.135.10"
+
+# Setup the Private Public Keys for the VM needed for Ansible to connect into and adminiser other VM's
+
+# Starts shell on the Vagrant Control VM
+    h.vm.provision :shell, :inline => <<'EOF'
+
+# Looks to see if the file for rsa key exist if it does not it creates a rsa public private key pair
+if [ ! -f "/home/vagrant/.ssh/id_rsa" ]; then
+  ssh-keygen -t rsa -N "" -f /home/vagrant/.ssh/id_rsa
+fi
+# The public key is then copied to the vagrant folder on the root drive of the Control vm as control.pub
+cp /home/vagrant/.ssh/id_rsa.pub /vagrant/control.pub
+
+# cat the control.pub looking for the SSHEOF, ssh end of file, pipe the contents of the file which is the ssh public key to 
+# a new key file in the hidden.ssh directory called config. making config is new public key 
+cat << 'SSHEOF' > /home/vagrant/.ssh/config
+
+# makes sure the movement of the key doesn't trigger an error until the permissions are changed for the  key file
+Host *
+  StrictHostKeyChecking no
+  UserKnownHostsFile=/dev/null
+SSHEOF
+# changes the permissions to make the key file Read only
+chown -R vagrant:vagrant /home/vagrant/.ssh/
+EOF
+end
+
+# Provisions load balancer
+  config.vm.define "lb01" do |h|
+    h.vm.network "private_network", ip: "192.168.135.101"
+    h.vm.provision :shell, inline: 'cat /vagrant/control.pub >> /home/vagrant/.ssh/authorized_keys'
+  end
+
+# Provisions application server 01
+  config.vm.define "app01" do |h|
+    h.vm.network "private_network", ip: "192.168.135.111"
+    h.vm.provision :shell, inline: 'cat /vagrant/control.pub >> /home/vagrant/.ssh/authorized_keys'
+  end
+
+# Provisions application server 02
+  config.vm.define "app02" do |h|
+    h.vm.network "private_network", ip: "192.168.135.112"
+    h.vm.provision :shell, inline: 'cat /vagrant/control.pub >> /home/vagrant/.ssh/authorized_keys'
+  end
+
+# Provisions database server
+  config.vm.define "db01" do |h|
+    h.vm.network "private_network", ip: "192.168.135.121"
+    h.vm.provision :shell, inline: 'cat /vagrant/control.pub >> /home/vagrant/.ssh/authorized_keys'
+  end
+
+end
